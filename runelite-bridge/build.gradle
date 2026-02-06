@@ -1,0 +1,28 @@
+plugins {
+    id 'java'
+}
+
+group = "com.rsflip"
+version = "0.1.0"
+
+repositories {
+    maven { url = "https://repo.runelite.net" }
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(11)
+    }
+}
+
+dependencies {
+    // Pull RuneLite client APIs from RuneLite's repo
+    compileOnly "net.runelite:client:+"
+
+    testImplementation "junit:junit:4.13.2"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+}
