@@ -4,11 +4,13 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@fastify/cors": "8",
+    "@fastify/websocket": "8",
     "fastify": "^4.28.1"
   },
   "devDependencies": {
-    "tsx": "^4.16.2",
     "@types/node": "^20.14.10",
+    "tsx": "^4.16.2",
     "typescript": "^5.5.4"
   },
   "scripts": {
