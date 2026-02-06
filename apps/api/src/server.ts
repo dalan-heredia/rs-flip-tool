@@ -4,6 +4,8 @@ import websocket from '@fastify/websocket';
 import { marketRoutes } from './market/routes';
 import { startMarketPoller } from './market/poller';
 import { computeFlipRecs } from './engine/flipEngine';
+import { telemetryRoutes } from './telemetry/routes';
+import { telemetryStore } from './telemetry/store';
 
 
 type WsEnvelope<TType extends string, TPayload> = {
@@ -19,7 +21,7 @@ app.get('/', async () => {
   return {
     ok: true,
     service: 'rs-flip-tool-api',
-    endpoints: ['/api/health', '/ws'],
+    endpoints: ['/api/health', '/api/flips', '/api/market/status', '/api/telemetry/status', '/ws'],
   };
 });
 
@@ -50,6 +52,26 @@ await app.register(cors, {
 await app.register(websocket);
 
 const clients = new Set<any>();
+
+type WsClient = any;
+
+function broadcast<TType extends string, TPayload>(type: TType, payload: TPayload) {
+  const msg: WsEnvelope<TType, TPayload> = {
+    schemaVersion: 1,
+    ts: Date.now(),
+    type,
+    payload,
+  };
+
+  const json = JSON.stringify(msg);
+  for (const ws of clients as Set<WsClient>) {
+    try {
+      ws.send(json);
+    } catch {
+      clients.delete(ws);
+    }
+  }
+}
 
 app.get('/api/health', async () => {
   return {
@@ -82,22 +104,18 @@ setInterval(() => {
   const cash = Number(process.env.DEFAULT_CASH ?? 5_000_000);
   const { params, recommendations } = computeFlipRecs({ cash });
 
-  const msg = {
-    schemaVersion: 1 as const,
-    ts: Date.now(),
-    type: 'flips:update' as const,
-    payload: { params, recommendations },
-  };
-
-  const json = JSON.stringify(msg);
-  for (const ws of clients) {
-    try {
-      ws.send(json);
-    } catch {
-      clients.delete(ws);
-    }
-  }
+  broadcast('flips:update', { params, recommendations });
 }, 5000);
+
+
+await app.register(telemetryRoutes, {
+  broadcastTelemetry: (payload: any) => {
+    broadcast('telemetry:update', {
+      ...payload,
+      status: telemetryStore.status(),
+    });
+  },
+});
 
 
 await app.register(marketRoutes);

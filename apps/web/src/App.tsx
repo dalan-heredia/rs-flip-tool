@@ -45,7 +45,35 @@ type FlipsUpdatePayload = {
   recommendations: FlipRec[];
 };
 
+type SessionTelemetry = {
+  accountHash: string;
+  lastSeenTs: number;
+  wallet?: {
+    accountHash: string;
+    ts: number;
+    coins?: number;
+    platinumTokens?: number;
+    cashTotal: number;
+  };
+  offers?: Array<{
+    slot: number;
+    itemId: number;
+    itemName?: string;
+    side?: string;
+    status?: string;
+    price?: number;
+    qtyTotal?: number;
+    qtyFilled?: number;
+  }>;
+};
+
+type TelemetryUpdatePayload = {
+  session: SessionTelemetry;
+  status?: { sessions: number; newestTs?: number };
+};
+
 type FlipsUpdateMsg = WsEnvelope<'flips:update', FlipsUpdatePayload>;
+type TelemetryUpdateMsg = WsEnvelope<'telemetry:update', TelemetryUpdatePayload>;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
@@ -57,6 +85,14 @@ function isFlipsUpdateMsg(v: unknown): v is FlipsUpdateMsg {
   if (!isRecord(v.payload)) return false;
   const recs = (v.payload as Record<string, unknown>).recommendations;
   return Array.isArray(recs);
+}
+
+function isTelemetryUpdateMsg(v: unknown): v is TelemetryUpdateMsg {
+  if (!isRecord(v)) return false;
+  if (v.type !== 'telemetry:update') return false;
+  if (!isRecord(v.payload)) return false;
+  const session = (v.payload as Record<string, unknown>).session;
+  return isRecord(session) && typeof session.accountHash === 'string';
 }
 
 function fmtNotes(notes: FlipRec['notes']): string {
@@ -96,6 +132,7 @@ export default function App() {
     'connecting',
   );
   const [lastMsg, setLastMsg] = useState<unknown>(null);
+  const [telemetry, setTelemetry] = useState<SessionTelemetry | null>(null);
 
   const [recs, setRecs] = useState<FlipRec[]>([]);
   const [engineParams, setEngineParams] = useState<Record<string, unknown> | null>(null);
@@ -193,6 +230,10 @@ export default function App() {
         setRecs(parsed.payload.recommendations);
         setEngineParams(parsed.payload.params ?? null);
       }
+
+      if (isTelemetryUpdateMsg(parsed)) {
+        setTelemetry(parsed.payload.session);
+      }
     };
 
     return () => ws.close();
@@ -258,6 +299,8 @@ export default function App() {
           <div style={{ marginTop: 10, marginBottom: 6, color: '#666' }}>
             {isFlipsUpdateMsg(lastMsg)
               ? `flips:update • recs=${(lastMsg.payload?.recommendations ?? []).length}`
+              : isTelemetryUpdateMsg(lastMsg)
+                ? `telemetry:update • account=${lastMsg.payload.session.accountHash}`
               : '—'}
           </div>
 
@@ -275,6 +318,32 @@ export default function App() {
           >
             {lastMsg ? JSON.stringify(lastMsg, null, 2) : '(none yet)'}
           </pre>
+        </div>
+
+        <div style={{ padding: 12, border: '1px solid #ddd', borderRadius: 10, minWidth: 360 }}>
+          <h2 style={{ marginTop: 0 }}>RuneLite Telemetry</h2>
+
+          {telemetry ? (
+            <>
+              <div>
+                Account: <b>{telemetry.accountHash}</b>
+              </div>
+              <div>
+                Last Seen: {new Date(telemetry.lastSeenTs).toLocaleTimeString()}
+              </div>
+              <div style={{ marginTop: 8 }}>
+                CashTotal:{' '}
+                <b>{(telemetry.wallet?.cashTotal ?? 0).toLocaleString()}</b> gp
+              </div>
+              <div style={{ color: '#666', marginTop: 6 }}>
+                Offers: {telemetry.offers?.length ?? 0}
+              </div>
+            </>
+          ) : (
+            <div style={{ color: '#666' }}>
+              No telemetry yet. POST to <code>/api/telemetry/wallet</code> with your bridge token.
+            </div>
+          )}
         </div>
       </div>
 
